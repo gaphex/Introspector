@@ -37,8 +37,9 @@ class Cerberus:
 
         self.conn.commit()
         print 'Successfully committed', n, 'datagrams'
+        print '-----------------------------------------------------------'
 
-    def parse_log(self, log, command):
+    def parse_log(self, log, command):              # will be reworked using regex expressions
         s = []
         t = ''
 
@@ -52,34 +53,39 @@ class Cerberus:
         for datagram in log:
             w = datagram.split(' ')
             if mode == 'tcpdump':
+                tim, src, dst, flg, ack, win, seq, length = '', '', '', '', '', '', '', ''
                 try:
-                    tim = w[0]
-                    src = w[w.index('IP') + 1]
-                    dst = w[w.index('>') + 1]
-                    flg = w[w.index('Flags') + 1]
-                    ack = w[w.index('ack') + 1]
-                    win = w[w.index('win') + 1]
-                    length = w[w.index('length') + 1]
-                    t = TCPDump(tim, src=src, dst=dst, flg=flg, ack=ack, win=win, length=length)
-                except:
-                    try:
-                        tim = w[0]
-                        src = w[w.index('IP')+1]
-                        dst = ''.join(w[w.index('>')+1:])
-                        t = TCPDump(tim, src=src, dst=dst)
-                    except:
-                        pass
+                    for i, j in enumerate(w):
+                        if len(j.split(':')) == 3 and len(j.split('.')) == 2:
+                            tim = j
+                        if j == 'IP':
+                            src = w[i+1]
+                        if j == '>':
+                            dst = w[i+1][:-1]
+                        if j == 'Flags':
+                            flg = w[i+1]
+                        if j == 'seq':
+                            seq = w[i+1]
+                        if j == 'ack':
+                            ack = w[i+1]
+                        if j == 'win':
+                            win = w[i+1][:-1]
+                        if j == 'length':
+                            length = w[i+1]
 
-                try:
-                    seq = w[w.index('seq')+1]
-                    t.seq = seq
-                except:
-                    pass
+                    t = TCPDump(tim, src=src, dst=dst, flg=flg, ack=ack, win=win, seq=seq, length=length)
+                    print t.__dict__
+
+                except Exception as e:
+                    print e, w
 
                 finally:
-                    s.append(t)
+                    if t:
+                        print t.__dict__
+                        s.append(t)
 
             if mode == 'ping':
+                timestamp, src, traffic, icmp, ttl, tim = '', '', '', '', '', ''
                 try:
                     traffic = w[w.index('bytes') - 1] + ' ' + w[w.index('bytes')]
                     src = w[w.index('from') + 1][:-1]
@@ -96,14 +102,16 @@ class Cerberus:
                     t = Ping(timestamp, source=src, traffic=traffic, icmp_seq=icmp, ttl=ttl, tim=tim)
 
                 except Exception as e:
-                    pass
+                    print e, w
+
                 finally:
                     if t:
+                        print t.__dict__
                         s.append(t)
 
             if mode == 'trace':
 
-                tar, hop, timestamp = '', '', ''
+                n, tar, hop, timestamp, p1, p2, p3 = '', '', '', '', '', '', ''
                 n = 0
                 p = []
                 try:

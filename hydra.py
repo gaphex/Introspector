@@ -37,10 +37,14 @@ class Hydra:
     def execute(self, host, usr, pwd, cmd, i):
 
         client = self.connect_to_box(host, usr, pwd)
-        tr = client.get_transport()
-        channel = tr.open_session()
+        try:
+            tr = client.get_transport()
+            channel = tr.open_session()
+        except Exception as e:
+            print e
 
         com = cmd
+
         self.commands.put(com)
         channel.exec_command(com)
         print i, ': executing', com, 'on host', host
@@ -52,7 +56,7 @@ class Hydra:
                 if len(rl) > 0:
                     r = channel.recv(512)
                     self.stacks[i].put(r)
-                    #print r
+                    # print r
             print 'received exit code'
 
         except Exception as e:
@@ -60,6 +64,7 @@ class Hydra:
             channel.close()
 
     def start_streaming(self):
+
         for i, p in enumerate(self.processes):
             print '---- starting process #', i, '----'
             p.start()
@@ -77,26 +82,27 @@ class Hydra:
         self.execute(self.inst, self.usr, self.pwd, cmd, i) # host '+target
 
     def ping(self, i, target):
-        cmd = "ping " + target + " | while read pong; do echo $(date): $pong; done"
+        cmd = "sudo ping " + target + " | while read pong; do echo $(date): $pong; done"
         self.execute(self.inst, self.usr, self.pwd, cmd, i)
 
-    def tracert(self, i, target):
-        cmd = "traceroute " + target + " | while read pong; do echo $(date): $pong; done"
+    def traceroute(self, i, target):
+        cmd = "sudo traceroute " + target + " | while read pong; do echo $(date): $pong; done"
         self.execute(self.inst, self.usr, self.pwd, cmd, i)
 
     def init_resources(self):
         self.cerberus = Cerberus()
         self.commands = Queue()
         self.processes = []
+        paramiko.util.log_to_file("log.log")
 
     def init_processes(self, action, hosts):
         tar = ''
         if action == 'ping':
             tar = self.ping
-        if action == 'dump':
+        if action == 'tcpdump':
             tar = self.tcpdump
         if action == 'traceroute':
-            tar = self.tracert
+            tar = self.traceroute
 
         self.processes = [mp.Process(target=tar, args=(i, host)) for i, host in enumerate(hosts)]
         self.stacks = [Queue() for process in self.processes]
