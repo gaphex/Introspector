@@ -1,4 +1,5 @@
 __author__ = 'denisantyukhov'
+
 from structures import *
 import sqlite3
 

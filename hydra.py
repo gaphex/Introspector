@@ -1,4 +1,4 @@
-__author__ = 'Denis'
+__author__ = 'denisantyukhov'
 
 import time
 import select
@@ -8,17 +8,17 @@ from cerberus import *
 import multiprocessing as mp
 from multiprocessing import Queue
 
-hosts = ["10.0.2.15", "10.0.2.2", "0.0.0.0"]
+
 
 class Hydra:
 
-    def __init__(self):
+    def __init__(self, auth):
         self.bufs = []
         self.stacks = []
         self.processes = []
-        self.usr = 'denis'
-        self.pwd = 'warped'
-        self.inst = '127.0.1.1'
+        self.usr = auth['usr']
+        self.pwd = auth['pwd']
+        self.inst = auth['inst']
         self.streaming = False
         self.init_resources()
 
@@ -43,7 +43,7 @@ class Hydra:
         com = cmd
         self.commands.put(com)
         channel.exec_command(com)
-        #print i, ': executing', com, 'on host', host
+        print i, ': executing', com, 'on host', host
 
         try:
             while not channel.exit_status_ready():
@@ -85,9 +85,20 @@ class Hydra:
         self.execute(self.inst, self.usr, self.pwd, cmd, i)
 
     def init_resources(self):
-
+        self.cerberus = Cerberus()
         self.commands = Queue()
-        self.processes = [mp.Process(target=self.ping, args=(i, host)) for i, host in enumerate(hosts)]
+        self.processes = []
+
+    def init_processes(self, action, hosts):
+        tar = ''
+        if action == 'ping':
+            tar = self.ping
+        if action == 'dump':
+            tar = self.tcpdump
+        if action == 'traceroute':
+            tar = self.tracert
+
+        self.processes = [mp.Process(target=tar, args=(i, host)) for i, host in enumerate(hosts)]
         self.stacks = [Queue() for process in self.processes]
         self.bufs = [list() for process in self.processes]
 
@@ -99,11 +110,11 @@ class Hydra:
         self.stop_streaming()
 
         while not self.commands.empty():
-            commands.append(self.commands.get(timeout=3))
+            commands.append(self.commands.get(timeout=1))
 
         for i, stack in enumerate(self.stacks):
             while not stack.empty():
-                tweet = stack.get(timeout=3)
+                tweet = stack.get(timeout=1)
                 self.bufs[i].append(tweet)
 
         for i, buf in enumerate(self.bufs):
@@ -111,12 +122,8 @@ class Hydra:
             print 'buffer', i, commands[i]
             w = ''.join(buf).split('\n')
             if w:
-                cerberus.parse_log(w[:-1], commands[i])
+                self.cerberus.parse_log(w[:-1], commands[i])
 
-if __name__ == '__main__':
-    cerberus = Cerberus()
-    hydra = Hydra()
-    hydra.stream(15)
 
 
 

@@ -1,22 +1,11 @@
-__author__ = 'Denis'
+__author__ = 'denisantyukhov'
 
 import requests
 
-keystoneURL = 'http://10.0.2.15:5000'
-credentials =   {
-                    "auth": {
-                        "tenantName": "demo",
-                        "passwordCredentials": {
-                            "username": "admin",
-                            "password": "openstack"
-                        }
-                    }
-                }
-
 class API:
-    def __init__(self, keystoneURL, creds):
-        self.keystoneURL = keystoneURL
-        self.credentials = creds
+    def __init__(self, keystone, auth):
+        self.keystoneURL = keystone
+        self.credentials = auth
         self.keystone = self.Keystone(self)
         self.token_header = {}
         self.authorize()
@@ -25,7 +14,7 @@ class API:
 
     def authorize(self):
         authURL = self.keystoneURL + '/v2.0/tokens'
-        r = requests.post(url=authURL, json=credentials)
+        r = requests.post(url=authURL, json=self.credentials)
         token = r.json()['access']['token']['id']
         self.token_header = {'X-Auth-Token': token}
 
@@ -87,12 +76,3 @@ class API:
             URL = self.neutronURL + 'v2.0/networks'
             r = requests.get(url=URL, headers=self.master.token_header)
             return r.json()['networks']
-
-def main():
-    api = API(keystoneURL, credentials)
-    print api.token_header
-    print api.neutron.listSubnets()
-
-
-if __name__ == '__main__':
-    main()
