@@ -57,10 +57,20 @@ class API:
             r = requests.get(url=URL, headers=self.master.token_header)
             return r.json()['ports']
 
+        def listNetworks(self):
+            URL = self.neutronURL + 'v2.0/networks'
+            r = requests.get(url=URL, headers=self.master.token_header)
+            return r.json()['networks']
+
         def listSubnets(self):
             URL = self.neutronURL + 'v2.0/subnets'
             r = requests.get(url=URL, headers=self.master.token_header)
             return r.json()['subnets']
+
+        def listRouters(self):
+            URL = self.neutronURL + 'v2.0/routers'
+            r = requests.get(url=URL, headers=self.master.token_header)
+            return r.json()['routers']
 
         def listExtensions(self):
             URL = self.neutronURL + 'v2.0/extensions'

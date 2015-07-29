@@ -1,13 +1,13 @@
 __author__ = 'denisantyukhov'
 
 import time
-import select
 import paramiko
+import datetime
 
 from cerberus import *
 import multiprocessing as mp
 from multiprocessing import Queue
-
+from parser import parse_log
 
 
 class Hydra:
@@ -16,31 +16,40 @@ class Hydra:
         self.bufs = []
         self.stacks = []
         self.processes = []
-        self.usr = auth['usr']
-        self.pwd = auth['pwd']
-        self.inst = auth['inst']
+        self.cerberus = None
+        self.ssh_auth = auth
         self.streaming = False
         self.init_resources()
 
     @staticmethod
-    def connect_to_box(host, username, password, timeout=3):
+    def connect_to_box(host, port, username, password, timeout=3):
         client = paramiko.SSHClient()
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         try:
-            client.connect(host, username=username, password=password, timeout=timeout)
+            client.connect(host, port=port, username=username, password=password, timeout=timeout)
         except Exception as e:
             print 'Could not connect to box: encountered exception', e
             print ''
             return None
         return client
 
-    def execute(self, host, usr, pwd, cmd, i):
+    @staticmethod
+    def get_timestamp():
+        return datetime.datetime.now()
 
-        client = self.connect_to_box(host, usr, pwd)
+    def execute(self, auth, cmd, i):
+
+        host = auth['host']
+        usr = auth['usr']
+        pwd = auth['pwd']
+        port = auth['port']
+
+        client = self.connect_to_box(host, port, usr, pwd)
         try:
             tr = client.get_transport()
             channel = tr.open_session()
         except Exception as e:
+            channel = None
             print e
 
         com = cmd
@@ -51,13 +60,12 @@ class Hydra:
 
         try:
             while not channel.exit_status_ready():
-                rl, wl, xl = select.select([channel], [], [], 0.0)
-                r = 0
-                if len(rl) > 0:
-                    r = channel.recv(512)
-                    self.stacks[i].put(r)
-                    # print r
+                r = channel.recv(4096)
+                self.stacks[i].put(r)
+                # print r
+
             print 'received exit code'
+            return 0
 
         except Exception as e:
             print 'caught exception', e, 'closing channel...'
@@ -77,17 +85,37 @@ class Hydra:
             p.terminate()
         self.streaming = False
 
+    def wait(self, span):
+        n = 5
+        ts = span/n
+        for i in range(n):
+            finished = 0
+            time.sleep(ts)
+            for process in self.processes:
+                if process.is_alive() == False:
+                    finished += 1
+            if finished == len(self.processes):
+                return 0
+        self.stop_streaming()
+
     def tcpdump(self, i, target):
-        cmd = 'sudo tcpdump host ' + target
-        self.execute(self.inst, self.usr, self.pwd, cmd, i) # host '+target
+        cmd = 'sudo tcpdump host ' + target + """ | awk '{ print strftime("\%Y-%m-%d %H:%M:%S\"), $0; fflush(); }' """
+        self.execute(self.ssh_auth, cmd, i) # host '+target
 
     def ping(self, i, target):
-        cmd = "sudo ping " + target + " | while read pong; do echo $(date): $pong; done"
-        self.execute(self.inst, self.usr, self.pwd, cmd, i)
+        cmd = "sudo ping " + target + """ | awk '{ print strftime("\%Y-%m-%d %H:%M:%S\"), $0; fflush(); }' """
+        self.execute(self.ssh_auth, cmd, i)
+
+    def fping(self, i, target):
+        if ':' in target:
+            cmd = "sudo fping6 " + target + """ | awk '{ print strftime("\%Y-%m-%d %H:%M:%S\"), $0; fflush(); }'"""
+        else:
+            cmd = "sudo fping -g " + target + """ | awk '{ print strftime("\%Y-%m-%d %H:%M:%S\"), $0; fflush(); }'"""
+        self.execute(self.ssh_auth, cmd, i)
 
     def traceroute(self, i, target):
-        cmd = "sudo traceroute " + target + " | while read pong; do echo $(date): $pong; done"
-        self.execute(self.inst, self.usr, self.pwd, cmd, i)
+        cmd = "sudo traceroute " + target + """ | awk '{ print strftime("\%Y-%m-%d %H:%M:%S\"), $0; fflush(); }'"""
+        self.execute(self.ssh_auth, cmd, i)
 
     def init_resources(self):
         self.cerberus = Cerberus()
@@ -99,10 +127,20 @@ class Hydra:
         tar = ''
         if action == 'ping':
             tar = self.ping
-        if action == 'tcpdump':
+        elif action == 'tcpdump':
             tar = self.tcpdump
-        if action == 'traceroute':
+        elif action == 'traceroute':
             tar = self.traceroute
+        elif action == 'fping':
+            tar = self.fping
+        else:
+            print 'invalid command, terminating'
+            return 0
+
+        if type(hosts) is not list:
+            r = hosts
+            hosts = list()
+            hosts.append(r)
 
         self.processes = [mp.Process(target=tar, args=(i, host)) for i, host in enumerate(hosts)]
         self.stacks = [Queue() for process in self.processes]
@@ -112,8 +150,7 @@ class Hydra:
         mb = []
         commands = []
         self.start_streaming()
-        time.sleep(span)
-        self.stop_streaming()
+        self.wait(span)
 
         while not self.commands.empty():
             commands.append(self.commands.get(timeout=1))
@@ -128,8 +165,10 @@ class Hydra:
             print 'buffer', i, commands[i]
             w = ''.join(buf).split('\n')
             if w:
-                self.cerberus.parse_log(w[:-1], commands[i])
-
-
-
+                parsed = parse_log(w[:-1], commands[i])
+                if parsed:
+                    try:
+                        self.cerberus.commit_to_db(parsed)
+                    except Exception as e:
+                        print 'Could not commit datagrams to database:', e
 
