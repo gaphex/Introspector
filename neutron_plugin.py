@@ -12,7 +12,7 @@ LOG = log.getLogger('Introspector')
 class Inspector(api.MechanismDriver):
 
     def initialize(self):
-	self.db = '/opt/stack/neutron/neutron/plugins/ml2/drivers/inspector/inspector.db'
+	self.db = '/opt/stack/neutron/neutron/plugins/ml2/drivers/inspector/driver_log.db'
 	self.conn = sqlite3.connect(self.db)
 	self.curs = self.conn.cursor()
 
