@@ -2,7 +2,6 @@ __author__ = 'Denis'
 
 from hydra import *
 from api import *
-from cerberus import *
 import pandas as pd
 import ast
 import sqlite3
@@ -26,7 +25,7 @@ if __name__ == '__main__':
     ipv4_pools = []
     ipv6_pools = []
 
-    con = sqlite3.connect('/opt/stack/neutron/neutron/plugins/ml2/drivers/inspector/inspector.db')
+    con = sqlite3.connect('database/driver_log.db')
     df = pd.read_sql('select * from subnet', con)
 
     for j, i in enumerate(list(df['current'])):
@@ -41,20 +40,28 @@ if __name__ == '__main__':
     ipv4_pools.append({'start': '10.0.2.0', 'end': '10.0.2.15'})
 
     for pool in ipv4_pools:
-        target = pool['start'] + '/23'
-        hydra.init_processes('fping', target)
-        hydra.stream(5)
+            target = pool['start'] + '/23'
+            hydra.init_processes('fping', target)
+            hydra.stream(5)
 
-
-    con1 = sqlite3.connect('dumps.db')
+    con1 = sqlite3.connect('database/dumps.db')
     df = pd.read_sql("select * from ping where traffic like 'alive'", con1)
     hosts = [host for host in list(df['source'].drop_duplicates()) if host]
-
-    for host in hosts:
-        hydra.init_processes('tcpdump', host)
-        hydra.stream(15)
-
     print hosts
+
+    hydra.init_processes('iproute', hosts)
+    hydra.stream(10)
+
+    hydra.init_processes('traceroute', hosts)
+    hydra.stream(10)
+
+    hydra.init_processes('ping', hosts)
+    hydra.stream(10)
+
+    hydra.init_processes('tcpdump', hosts)
+    hydra.stream(25)
+
+
 
 
 

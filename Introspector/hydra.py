@@ -7,7 +7,7 @@ import datetime
 from cerberus import *
 import multiprocessing as mp
 from multiprocessing import Queue
-from parser import parse_log
+from parser import Parser
 
 
 class Hydra:
@@ -15,6 +15,7 @@ class Hydra:
     def __init__(self, auth):
         self.bufs = []
         self.stacks = []
+        self.parser = Parser()
         self.processes = []
         self.cerberus = None
         self.ssh_auth = auth
@@ -52,11 +53,13 @@ class Hydra:
             channel = None
             print e
 
-        com = cmd
-
-        self.commands.put(com)
-        channel.exec_command(com)
-        print i, ': executing', com, 'on host', host
+        try:
+            com = cmd
+            self.commands.put(com)
+            channel.exec_command(com)
+            print i, ': executing', com, 'on host', host
+        except Exception as e:
+            print 'could not execute on host', host, 'caught', e
 
         try:
             while not channel.exit_status_ready():
@@ -81,7 +84,6 @@ class Hydra:
     def stop_streaming(self):
         for i, p in enumerate(self.processes):
             print '---- terminating process #', i, '----'
-            #p.join(timeout=1)
             p.terminate()
         self.streaming = False
 
@@ -106,6 +108,10 @@ class Hydra:
         cmd = "sudo ping " + target + """ | awk '{ print strftime("\%Y-%m-%d %H:%M:%S\"), $0; fflush(); }' """
         self.execute(self.ssh_auth, cmd, i)
 
+    def iproute(self, i, target):
+        cmd = "sudo ip route get " + target + """ | awk '{ print strftime("\%Y-%m-%d %H:%M:%S\"), $0; fflush(); }' """
+        self.execute(self.ssh_auth, cmd, i)
+
     def fping(self, i, target):
         if ':' in target:
             cmd = "sudo fping6 " + target + """ | awk '{ print strftime("\%Y-%m-%d %H:%M:%S\"), $0; fflush(); }'"""
@@ -114,7 +120,7 @@ class Hydra:
         self.execute(self.ssh_auth, cmd, i)
 
     def traceroute(self, i, target):
-        cmd = "sudo traceroute " + target + """ | awk '{ print strftime("\%Y-%m-%d %H:%M:%S\"), $0; fflush(); }'"""
+        cmd = "sudo traceroute " + target + """ -T | awk '{ print strftime("\%Y-%m-%d %H:%M:%S\"), $0; fflush(); }'"""
         self.execute(self.ssh_auth, cmd, i)
 
     def init_resources(self):
@@ -124,7 +130,7 @@ class Hydra:
         paramiko.util.log_to_file("log.log")
 
     def init_processes(self, action, hosts):
-        tar = ''
+
         if action == 'ping':
             tar = self.ping
         elif action == 'tcpdump':
@@ -133,7 +139,10 @@ class Hydra:
             tar = self.traceroute
         elif action == 'fping':
             tar = self.fping
+        elif action == 'iproute':
+            tar = self.iproute
         else:
+            tar = None
             print 'invalid command, terminating'
             return 0
 
@@ -147,7 +156,7 @@ class Hydra:
         self.bufs = [list() for process in self.processes]
 
     def stream(self, span):
-        mb = []
+
         commands = []
         self.start_streaming()
         self.wait(span)
@@ -165,7 +174,7 @@ class Hydra:
             print 'buffer', i, commands[i]
             w = ''.join(buf).split('\n')
             if w:
-                parsed = parse_log(w[:-1], commands[i])
+                parsed = self.parser.parse_log(w[:-1], commands[i])
                 if parsed:
                     try:
                         self.cerberus.commit_to_db(parsed)
