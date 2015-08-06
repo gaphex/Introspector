@@ -1,5 +1,5 @@
 __author__ = 'denisantyukhov'
-
+from multiprocessing import Queue
 
 class TCPDump:
 
@@ -43,4 +43,21 @@ class IPRoute:
         self.timestamp = timestamp
         self.target = target
         self.route = route
+
+
+class namedBuffer:
+
+    def __init__(self, name=None):
+        self.name = name
+        self.queue = Queue()
+        self.buffer = list()
+
+
+class Job:
+
+    def __init__(self, auth, command):
+        self.auth = auth
+        self.command = command
+
+
 

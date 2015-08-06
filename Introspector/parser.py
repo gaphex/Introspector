@@ -2,6 +2,8 @@ __author__ = 'Denis'
 from structures import *
 import datetime
 
+def uniques(lst):
+        return list(set(lst))
 
 class Parser:
     def __init__(self):
@@ -53,8 +55,9 @@ class Parser:
                         if j == 'length':
                             length = w[i+1]
 
-                    t = TCPDump(timestamp, src=src, dst=dst, flg=flg, ack=ack, win=win, seq=seq, length=length)
-                    print t.__dict__
+                    if timestamp:
+                        t = TCPDump(timestamp, src=src, dst=dst, flg=flg, ack=ack, win=win, seq=seq, length=length)
+
                 except Exception as e:
                     print e, w
                 finally:
@@ -152,4 +155,5 @@ class Parser:
                         s.append(t)
 
         if len(s):
+            s = uniques(s)
             return s

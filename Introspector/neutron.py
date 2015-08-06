@@ -1,65 +1,49 @@
 __author__ = 'Denis'
 
+from auths import *
 from hydra import *
 from api import *
+from manager import *
 import pandas as pd
 import ast
 import sqlite3
-keystoneURL = 'http://10.0.2.15:5000'
-credentials = {
-    "auth": {
-        "tenantName": "demo",
-        "passwordCredentials": {
-            "username": "admin",
-            "password": "openstack"  # auths for API services
-        }
-    }
-}
 
-auth = {'usr': 'denis', 'pwd': 'warped', 'port': 22, 'host': '127.0.1.1'}  # auths for SSH
+def uniques(lst):
+        return list(set(lst))
+
 
 if __name__ == '__main__':
     api = API(keystoneURL, credentials)
-    hydra = Hydra(auth)
+    hydra = Hydra()
+    jobs = []
     hosts = []
-    ipv4_pools = []
-    ipv6_pools = []
+    subnets = []
 
     con = sqlite3.connect('database/driver_log.db')
     df = pd.read_sql('select * from subnet', con)
 
-    for j, i in enumerate(list(df['current'])):
-        for pool in ast.literal_eval(i)['allocation_pools']:
-            if ':' in pool['start']:
-                if pool not in ipv6_pools:
-                    ipv6_pools.append(pool)
-            else:
-                if pool not in ipv4_pools:
-                    ipv4_pools.append(pool)
+    for i in list(df['current']):
+        datagram = ast.literal_eval(i)
+        if datagram['ip_version'] == 4:
+            subnets.append(datagram['cidr'])
 
-    ipv4_pools.append({'start': '10.0.2.0', 'end': '10.0.2.15'})
+    subnets.append('10.0.2.0/24')
+    subnets = uniques(subnets)
+    print subnets
 
-    for pool in ipv4_pools:
-            target = pool['start'] + '/23'
-            hydra.init_processes('fping', target)
-            hydra.stream(5)
+
+    jobs = prepare_jobs('fping', subnets, auth)
+
+    hydra.init_processes(jobs)
+    hydra.run(15)
+
 
     con1 = sqlite3.connect('database/dumps.db')
     df = pd.read_sql("select * from ping where traffic like 'alive'", con1)
     hosts = [host for host in list(df['source'].drop_duplicates()) if host]
     print hosts
 
-    hydra.init_processes('iproute', hosts)
-    hydra.stream(10)
 
-    hydra.init_processes('traceroute', hosts)
-    hydra.stream(10)
-
-    hydra.init_processes('ping', hosts)
-    hydra.stream(10)
-
-    hydra.init_processes('tcpdump', hosts)
-    hydra.stream(25)
 
 
 

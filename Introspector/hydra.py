@@ -2,25 +2,21 @@ __author__ = 'denisantyukhov'
 
 import time
 import paramiko
-import datetime
-
 from cerberus import *
-import multiprocessing as mp
-from multiprocessing import Queue
 from parser import Parser
-
+import multiprocessing as mp
+from structures import namedBuffer
 
 class Hydra:
 
-    def __init__(self, auth):
-        self.bufs = []
-        self.stacks = []
-        self.parser = Parser()
+    def __init__(self):
+
         self.processes = []
-        self.cerberus = None
-        self.ssh_auth = auth
+        self.containers = []
         self.streaming = False
-        self.init_resources()
+        self.parser = Parser()
+        self.cerberus = Cerberus()
+        paramiko.util.log_to_file("hydra.log")
 
     @staticmethod
     def connect_to_box(host, port, username, password, timeout=3):
@@ -34,10 +30,6 @@ class Hydra:
             return None
         return client
 
-    @staticmethod
-    def get_timestamp():
-        return datetime.datetime.now()
-
     def execute(self, auth, cmd, i):
 
         host = auth['host']
@@ -46,6 +38,7 @@ class Hydra:
         port = auth['port']
 
         client = self.connect_to_box(host, port, usr, pwd)
+
         try:
             tr = client.get_transport()
             channel = tr.open_session()
@@ -55,27 +48,24 @@ class Hydra:
 
         try:
             com = cmd
-            self.commands.put(com)
             channel.exec_command(com)
             print i, ': executing', com, 'on host', host
         except Exception as e:
             print 'could not execute on host', host, 'caught', e
 
         try:
+
             while not channel.exit_status_ready():
                 r = channel.recv(4096)
-                self.stacks[i].put(r)
+                self.containers[i].queue.put(r)
                 # print r
-
             print 'received exit code'
             return 0
-
         except Exception as e:
             print 'caught exception', e, 'closing channel...'
             channel.close()
 
     def start_streaming(self):
-
         for i, p in enumerate(self.processes):
             print '---- starting process #', i, '----'
             p.start()
@@ -94,87 +84,36 @@ class Hydra:
             finished = 0
             time.sleep(ts)
             for process in self.processes:
-                if process.is_alive() == False:
+                if not process.is_alive():
                     finished += 1
             if finished == len(self.processes):
                 return 0
         self.stop_streaming()
 
-    def tcpdump(self, i, target):
-        cmd = 'sudo tcpdump host ' + target + """ | awk '{ print strftime("\%Y-%m-%d %H:%M:%S\"), $0; fflush(); }' """
-        self.execute(self.ssh_auth, cmd, i) # host '+target
+    def init_processes(self, jobs):
 
-    def ping(self, i, target):
-        cmd = "sudo ping " + target + """ | awk '{ print strftime("\%Y-%m-%d %H:%M:%S\"), $0; fflush(); }' """
-        self.execute(self.ssh_auth, cmd, i)
+        self.processes = [mp.Process(target=self.execute, args=(job.auth, job.command, i)) for i, job in enumerate(jobs)]
+        self.containers = [namedBuffer(name=job.command) for job in jobs]
 
-    def iproute(self, i, target):
-        cmd = "sudo ip route get " + target + """ | awk '{ print strftime("\%Y-%m-%d %H:%M:%S\"), $0; fflush(); }' """
-        self.execute(self.ssh_auth, cmd, i)
-
-    def fping(self, i, target):
-        if ':' in target:
-            cmd = "sudo fping6 " + target + """ | awk '{ print strftime("\%Y-%m-%d %H:%M:%S\"), $0; fflush(); }'"""
-        else:
-            cmd = "sudo fping -g " + target + """ | awk '{ print strftime("\%Y-%m-%d %H:%M:%S\"), $0; fflush(); }'"""
-        self.execute(self.ssh_auth, cmd, i)
-
-    def traceroute(self, i, target):
-        cmd = "sudo traceroute " + target + """ -T | awk '{ print strftime("\%Y-%m-%d %H:%M:%S\"), $0; fflush(); }'"""
-        self.execute(self.ssh_auth, cmd, i)
-
-    def init_resources(self):
-        self.cerberus = Cerberus()
-        self.commands = Queue()
-        self.processes = []
-        paramiko.util.log_to_file("log.log")
-
-    def init_processes(self, action, hosts):
-
-        if action == 'ping':
-            tar = self.ping
-        elif action == 'tcpdump':
-            tar = self.tcpdump
-        elif action == 'traceroute':
-            tar = self.traceroute
-        elif action == 'fping':
-            tar = self.fping
-        elif action == 'iproute':
-            tar = self.iproute
-        else:
-            tar = None
-            print 'invalid command, terminating'
-            return 0
-
-        if type(hosts) is not list:
-            r = hosts
-            hosts = list()
-            hosts.append(r)
-
-        self.processes = [mp.Process(target=tar, args=(i, host)) for i, host in enumerate(hosts)]
-        self.stacks = [Queue() for process in self.processes]
-        self.bufs = [list() for process in self.processes]
-
-    def stream(self, span):
-
-        commands = []
+    def run(self, span):
+        if span < 5:
+            span = 5
+            
         self.start_streaming()
         self.wait(span)
 
-        while not self.commands.empty():
-            commands.append(self.commands.get(timeout=1))
+        for i, buf in enumerate(self.containers):
 
-        for i, stack in enumerate(self.stacks):
-            while not stack.empty():
-                tweet = stack.get(timeout=1)
-                self.bufs[i].append(tweet)
+            while not buf.queue.empty():
+                datagram = buf.queue.get(timeout=1)
+                buf.buffer.append(datagram)
 
-        for i, buf in enumerate(self.bufs):
+        for i, buf in enumerate(self.containers):
             print '------------------------------------------------'
-            print 'buffer', i, commands[i]
-            w = ''.join(buf).split('\n')
+            print 'buffer', i, buf.name
+            w = ''.join(buf.buffer).split('\n')
             if w:
-                parsed = self.parser.parse_log(w[:-1], commands[i])
+                parsed = self.parser.parse_log(w, buf.name)
                 if parsed:
                     try:
                         self.cerberus.commit_to_db(parsed)
