@@ -13,9 +13,14 @@ class Parser:
     def get_timestamp():
         return str(datetime.datetime.now())[:-7]
 
-    def parse_log(self, log, command):              # will be reworked using regex expressions
+    def parse_log(self, container):              # will be reworked using regex expressions
+
+        command = container.name
+        log = ''.join(container.buffer).split('\n')
+
         s = []
         t = None
+
         if 'fping' in command:
             mode = 'fping'
         elif 'ping' in command:
@@ -62,7 +67,6 @@ class Parser:
                     print e, w
                 finally:
                     if t:
-                        print t.__dict__
                         s.append(t)
 
             if mode == 'fping' and 'alive' in w:
@@ -79,7 +83,6 @@ class Parser:
                     print e, w
                 finally:
                     if t:
-                        print t.__dict__
                         s.append(t)
 
             if mode == 'ping':
@@ -102,7 +105,6 @@ class Parser:
                     print e, w
                 finally:
                     if t:
-                        print t.__dict__
                         s.append(t)
 
             if mode == 'trace':
@@ -113,6 +115,7 @@ class Parser:
                     for i, j in enumerate(w):
                         if j == 'traceroute':
                             self.temp = w[i+2]
+                            t = Trace(self.get_timestamp(), n=0, target=self.temp, hop='127.0.1.1', p1=0, p2=0, p3=0)
                             break
 
                         if len(j.split(':')) == 3 and len(j) == 8:
@@ -125,13 +128,11 @@ class Parser:
 
                     if len(p) == 3:
                         t = Trace(timestamp, n=n, target=self.temp, hop=hop, p1=p[0], p2=p[1], p3=p[2])
-                    else:
-                        t = Trace(self.get_timestamp(), n=0, target=self.temp, hop='127.0.1.1', p1=0, p2=0, p3=0)
+
                 except Exception as e:
                     print e, w
                 finally:
                     if t:
-                        print t.__dict__
                         s.append(t)
 
             if mode == 'iproute':
@@ -151,7 +152,6 @@ class Parser:
                     if route:
                         route.reverse()
                         t = IPRoute(timestamp, target=route[-1], route=route)
-                        print t.__dict__
                         s.append(t)
 
         if len(s):

@@ -8,6 +8,7 @@ import pandas as pd
 import ast
 import sqlite3
 
+
 def uniques(lst):
         return list(set(lst))
 
@@ -29,23 +30,30 @@ if __name__ == '__main__':
 
     subnets.append('10.0.2.0/24')
     subnets = uniques(subnets)
-    print subnets
 
-
-    jobs = prepare_jobs('fping', subnets, auth)
-
+    jobs = prepare_jobs('fping', subnets, auth, ['-g'])
     hydra.init_processes(jobs)
     hydra.run(15)
-
 
     con1 = sqlite3.connect('database/dumps.db')
     df = pd.read_sql("select * from ping where traffic like 'alive'", con1)
     hosts = [host for host in list(df['source'].drop_duplicates()) if host]
     print hosts
 
+    jobs = prepare_jobs('ping', hosts, auth)
+    hydra.init_processes(jobs)
+    hydra.run(25)
 
+'''
+    jobs = prepare_jobs('traceroute', hosts, auth, ['-I'])
+    hydra.init_processes(jobs)
+    hydra.run(15)
 
+    jobs = prepare_jobs('iproute', hosts, auth)
+    hydra.init_processes(jobs)
+    hydra.run(15)
 
-
-
-
+    jobs = prepare_jobs('tcpdump', hosts, auth, ['-vvv'])
+    hydra.init_processes(jobs)
+    hydra.run(15)
+'''

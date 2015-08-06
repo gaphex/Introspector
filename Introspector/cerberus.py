@@ -2,6 +2,7 @@ __author__ = 'denisantyukhov'
 
 import sqlite3
 
+
 class Cerberus:
 
     def __init__(self):
@@ -37,6 +38,7 @@ class Cerberus:
 
         try:
             for item in lst:
+                print item.__dict__
                 if item.__class__.__name__ == 'Trace':
                     n += 1
                     self.curs.execute("insert into traceroute (timestamp, n, target, hop, p1, p2, p3) values(?, ?, ?, ?, ?, ?, ?)", (item.timestamp, item.n, item.target, item.hop, item.p1, item.p2, item.p3))

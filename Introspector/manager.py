@@ -1,19 +1,24 @@
 __author__ = 'Denis'
 from structures import Job
 
-def prepare_job(action, target, auth):
-    if action == 'ping':
-        cmd = "sudo ping " + target
-    elif action == 'tcpdump':
-        cmd = 'sudo tcpdump host ' + target
-    elif action == 'traceroute':
-        cmd = "sudo traceroute -I " + target
-    elif action == 'fping':
-        cmd = "sudo fping -g " + target
-    elif action == 'iproute':
-        cmd = "sudo ip route get " + target
+
+def prepare_job(action, target, auth, flags=None):
+    if flags:
+        flagstr = ' '.join(flags)
     else:
-        cmd = None
+        flagstr = ''
+
+    if action == 'ping':
+        cmd = "sudo ping " + flagstr + ' ' + target
+    elif action == 'tcpdump':
+        cmd = "sudo tcpdump host " + flagstr + ' ' + target
+    elif action == 'traceroute':
+        cmd = "sudo traceroute " + flagstr + ' ' + target
+    elif action == 'fping':
+        cmd = "sudo fping " + flagstr + ' ' + target
+    elif action == 'iproute':
+        cmd = "sudo ip route get " + flagstr + ' ' + target
+    else:
         print 'invalid command, terminating'
         return 0
 
@@ -22,15 +27,6 @@ def prepare_job(action, target, auth):
 
     return Job(auth=auth, command=cmd)
 
-def prepare_jobs(action, targets, auth):
 
-    return [prepare_job(action, target, auth) for target in targets]
-
-
-
-
-
-
-
-
-
+def prepare_jobs(action, targets, auth, flags=None):
+    return [prepare_job(action, target, auth, flags) for target in targets]

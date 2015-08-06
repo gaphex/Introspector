@@ -7,6 +7,7 @@ from parser import Parser
 import multiprocessing as mp
 from structures import namedBuffer
 
+
 class Hydra:
 
     def __init__(self):
@@ -67,13 +68,13 @@ class Hydra:
 
     def start_streaming(self):
         for i, p in enumerate(self.processes):
-            print '---- starting process #', i, '----'
+            # print '---- starting process #', i, '----'
             p.start()
         self.streaming = True
 
     def stop_streaming(self):
         for i, p in enumerate(self.processes):
-            print '---- terminating process #', i, '----'
+            # print '---- terminating process #', i, '----'
             p.terminate()
         self.streaming = False
 
@@ -98,25 +99,26 @@ class Hydra:
     def run(self, span):
         if span < 5:
             span = 5
-            
+
         self.start_streaming()
         self.wait(span)
 
-        for i, buf in enumerate(self.containers):
+        for i, container in enumerate(self.containers):
 
-            while not buf.queue.empty():
-                datagram = buf.queue.get(timeout=1)
-                buf.buffer.append(datagram)
+            while not container.queue.empty():
+                datagram = container.queue.get(timeout=1)
+                container.buffer.append(datagram)
 
-        for i, buf in enumerate(self.containers):
+        for i, container in enumerate(self.containers):
             print '------------------------------------------------'
-            print 'buffer', i, buf.name
-            w = ''.join(buf.buffer).split('\n')
-            if w:
-                parsed = self.parser.parse_log(w, buf.name)
+            print 'buffer', i, container.name
+
+            try:
+                parsed = self.parser.parse_log(container)
                 if parsed:
-                    try:
-                        self.cerberus.commit_to_db(parsed)
-                    except Exception as e:
-                        print 'Could not commit datagrams to database:', e
+                    self.cerberus.commit_to_db(parsed)
+
+            except Exception as e:
+                print 'Could not parse log, caught', e
+
 
